@@ -1,5 +1,6 @@
 import openpyxl
 import my_fun
+import datetime
 
 dataWorkbook = openpyxl.load_workbook('miami_line_bot.xlsx')
 
@@ -47,10 +48,6 @@ def reply_driver_info(inputDriver):
     return reply
 
 
-# teamSheet = dataWorkbook['teamName']
-# keywords.append(my_fun.xlsx_get_data(teamSheet))
-
-
 def reply_team_info():
     teamInfoSheet = dataWorkbook['teamInfo']
     teamInfo = my_fun.xlsx_get_data_remove_column_name(teamInfoSheet)
@@ -72,6 +69,48 @@ def reply_team_info():
     reply = [{'type': 'flex', 'altText': 'Teams Information',
               'contents': {'type': 'carousel', 'contents': teamsInfoReply}}]
     return reply
+
+
+def reply_stock():
+    today = datetime.datetime.now().strftime('%Y%m%d')
+    url = f'https://www.twse.com.tw/exchangeReport/BWIBBU_d?response=json&date={today}&selectType=ALL&_=1651891543707'
+    file = my_fun.get_json_from_web(url)
+    if file['stat'] == 'OK':
+        statName = ['殖利率(%)', '本益比', '股價淨值比']
+        data = []
+        for i in range(len(file['data'])):
+            data.append([file['data'][i][j] for j in [0, 1, 2, 4, 5]])
+        top10s = [get_top_10_name(2, data), get_top_10_name(3, data), get_top_10_name(4, data)]
+
+        allContent = []
+        for a in range(3):
+            subContent = [{"type": "text", "text": statName[a], "weight": "bold", "size": "lg"},
+                          {"type": "separator", "margin": "lg"}]
+            for b in range(10):
+                subContent.append({"type": "box", "layout": "horizontal",
+                                   "contents": [{"type": "text", "text": top10s[a][b][0], "flex": 2},
+                                                {"type": "text", "text": top10s[a][b][1], "flex": 2},
+                                                {"type": "text", "text": top10s[a][b][2], "flex": 2, "align": "end"}]})
+            allContent.append({"type": "bubble", "size": "kilo",
+                                "body": {"type": "box", "layout": "vertical", "contents": subContent, "spacing": "sm",
+                                         "paddingAll": "13px"}})
+        reply = [{'type': 'text', 'text': f'{today} \n前十殖利率(%)、本益比與股價淨值比'},
+                 {'type': 'flex', 'altText': 'Stock Information',
+                  'contents': {'type': 'carousel', 'contents': allContent}}]
+    else:
+        reply = [{'type': 'text', 'text': '很抱歉，今日無交易資訊'}]
+    return reply
+
+def get_top_10_name(statIndex, dataset):
+    lst = [dataset[i][statIndex] for i in range(len(dataset))]
+    temp = lst.copy()
+    temp.sort(reverse=True)
+    top10Num = temp[0:10]
+    top10Index = [lst.index(i) for i in top10Num]
+    top10 = []
+    for i in range(10):
+        top10.append([dataset[top10Index[i]][0], dataset[top10Index[i]][1], dataset[top10Index[i]][statIndex]])
+    return top10
 
 
 def reply_location():
@@ -213,38 +252,6 @@ def reply_driver_standings():
               'previewImageUrl': 'https://pbs.twimg.com/media/FRHjkCDXIAI962F?format=jpg&name=medium'}]
     return reply
 
-
-replies = [reply_schedule(),
-           # 顯示比賽地點名稱與位置訊息
-           reply_location(),
-           # 顯示比賽資本資訊與場地圖
-           reply_info(),
-           # 目前為止的車隊排名
-           [{'type': 'image',
-             'originalContentUrl': 'https://pbs.twimg.com/media/FRHsDccXIAA3RrT?format=png&name=medium',
-             'previewImageUrl': 'https://pbs.twimg.com/media/FRHsDccXIAA3RrT?format=png&name=medium'}],
-           # 目前為止的車手排名
-           [{'type': 'image',
-             'originalContentUrl': 'https://pbs.twimg.com/media/FRHjkCDXIAI962F?format=jpg&name=medium',
-             'previewImageUrl': 'https://pbs.twimg.com/media/FRHjkCDXIAI962F?format=jpg&name=medium'}],
-           # 車隊資訊
-           reply_team_info(),
-           # 車手資訊
-           [{'type': 'flex',
-             'altText': 'Driver Information',
-             'contents': {'type': 'bubble',
-                          'hero': {'type': 'image',
-                                   'url': '',
-                                   'size': 'full'},
-                          'body': {'type': 'box', 'layout': 'vertical',
-                                   'contents': []}}}],
-           [{'type': 'text',
-             'text': f"We are soo sorry our 3head cannot understand your 5head question.\n"
-                     f"But if you want to make some predictions, here's a form for you!"},
-            {'type': 'text',
-             'text': 'https://forms.gle/9D2obm4g3ciGvBCe6'}]
-           ]
-
 def reply_response(inputText):
     wb = openpyxl.load_workbook('305-Line問答題.xlsx')
     sheet = wb['工作表1']
@@ -255,6 +262,7 @@ def reply_response(inputText):
             replyTxt = data[i][1]
     reply = [{'type': 'text', 'text': replyTxt}]
     return reply
+
 
 def reply_bus_status(inputText):
     url = 'https://data.tycg.gov.tw/api/v1/rest/datastore/bf55b21a-2b7c-4ede-8048-f75420344aed?format=json&limit=9999'
@@ -277,6 +285,7 @@ def reply_bus_status(inputText):
 
     reply = [{'type': 'text', 'text': f'車輛狀態: {status}'}]
     return reply
+
 
 def get_reply(inputText):
     keywordSheet = dataWorkbook['keywords']
@@ -305,6 +314,8 @@ def get_reply(inputText):
         reply = reply_driver_info(inputText)
     elif messageType == 'bus':
         reply = reply_bus_status(inputText)
+    elif messageType == 'stock':
+        reply = reply_stock()
     else:
         reply = [{'type': 'text',
                   'text': f"We are soo sorry our 3head cannot understand your 5head question.\n"
